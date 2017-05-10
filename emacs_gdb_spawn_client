@@ -1,0 +1,97 @@
+#!/bin/bash
+
+function __get_rank() {
+  local _rank=-1
+  if [ "x$OMPI_COMM_WORLD_RANK" != "x" ];then
+    _rank=${OMPI_COMM_WORLD_RANK} #OpenMPI
+    # echo "${RANK}: OpenMPI detected"
+  elif [ "x$PMI_RANK" != "x" ]; then
+    _rank=${PMI_RANK}            #MPICH 2
+    # echo "${RANK}: MPICH based MPI detected"
+  else
+    # echo "MPI implementation not detected"
+    exit 1
+  fi
+  echo $_rank
+}
+
+function __wait() {
+  while [ -e /proc/$1 ]
+  do
+    sleep .6
+  done
+}
+
+_rank_of_interest=0
+_server=emacs
+_ppid=
+_autorun=
+_frame=
+_wd=
+_tmpdir=
+while getopts "p:t:w:n:s:x:fa" opt; do
+  case $opt in
+    a)
+      _autorun="-ex run"
+      ;;
+    f)
+      _frame="-c"
+      ;;
+    n)
+      _rank_of_interest=$OPTARG
+      ;;
+    p)
+      _ppid=$OPTARG
+      ;;
+    s)
+      _server=$OPTARG
+      ;;
+    t)
+      _tmpdir=$OPTARG
+      ;;
+    w)
+      _wd=$OPTARG
+      ;;
+    x)
+      _gdbinit="-x $OPTARG"
+      ;;
+  esac
+done
+
+shift $(( $OPTIND - 1 ))
+
+_exe=$1
+shift
+
+_fullname=$(readlink -f ${_exe})
+if [ "x${_wd}" == "x" ]; then
+  _wd=$(dirname ${_fullname})
+fi
+
+_name=$(basename ${_fullname})
+_rank=$(__get_rank)
+
+# Setting the environment file for gdb to know about MPI
+_tmp="${_tmpdir}/${_name}_--$_rank--"
+printenv -0 | grep -vz TERM | grep -vz BASH_FUNC | xargs -0 -I '{}' -- echo "set environment {}" > "${_tmp}"
+
+# Spawning the clients
+if [ ${_rank} -eq ${_rank_of_interest} ] ; then
+  # master
+  emacsclient $frame -s ${_server} -e "(gud-gdb \"gdb --fullname -ix ${_tmp} -cd ${_wd} -args ${_fullname} $*\")"
+else
+  # slaves
+  emacsclient -s ${_server} -e "(gud-gdb \"gdb --fullname -ix ${_tmp} ${_gdbinit} ${_autorun} -cd ${_wd} -args ${_fullname} $*\")"
+fi
+
+# Finding the GDB pid
+if [ ! \( ${_rank} -eq ${_rank_of_interest} -a "x${frame}" != "x" \) ]; then
+  _pid=$(ps -fu $USER | grep -v grep | grep -v emacsclient | grep "gdb --fullname -ix ${_tmp} " |  grep " ${_ppid} " | awk '{ print $2; }')
+
+  # some cleaning up
+  trap "{ echo ${_rank}: TRAP; kill -9 ${_pid}; exit 1 }" ABRT TERM KILL INT QUIT ERR
+
+  # wait for gdb to finish
+  echo "$_rank: Waiting for gdb (${_pid})"
+  __wait $_pid
+fi

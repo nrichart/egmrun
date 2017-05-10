@@ -1,0 +1,151 @@
+#!/bin/bash
+
+_source_path="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+_emacs_gdb_spawn_client="${_source_path}/emacs_gdb_spawn_client"
+
+log() { printf '%s\n' "$*"; }
+error() { log "ERROR: $*" >&2; }
+fatal() { error "$@"; exit 1; }
+
+_rank_of_interest=0
+_server=emacs
+_frame=
+_wd=
+_autorun=
+_gdbinit=
+_nb_proc=1
+_mpirun="mpirun"
+_mpirun_np="-np"
+
+
+function usage() {
+  echo "$ egmrun [options] exe [exe_args]
+
+options:
+  -a              Autorun the processes that are not of the rank of interest
+  -f              Create a new frame for the emacsclient
+  -m <mpirun_cmd> Specify the wrapper to spawn mpi jobs (default: ${_mpirun})
+  -n <nb proc>    Number of processors to use (default: the default of ${_mpirun})
+  -p <mpirun_np>  Specify the option to pass to the wrapper to specify the number of processes (default: ${_mpirun_np})
+  -r <rank>       The rank of the process to debug (default: ${_rank_of_interest})
+  -s <server>     The emacs server to use (default: ${_server})
+  -w <wd>         The working directory (default: ${_wd})
+  -x <gdbinit>    GDB init file to use
+"
+
+  exit 0
+}
+
+function __emacs_server_list() {
+  local _named=$(ps -fu $USER | grep "emacs --daemon=" | grep -v grep | sed -e 's/.*--daemon=\([0-9a-zA-Z_\-+]*\).*/\1/')
+  local _anon=$(ps -fu $USER | grep "emacs --daemon" | grep -v grep | grep -v "daemon=")
+  local _emacs_list
+  if [ "x$_anon" = "x" ]; then
+    _emacs_list="$_named"
+  else
+    _emacs_list="emacs\n$_named"
+  fi
+
+  echo "$_emacs_list"
+}
+
+function __wait() {
+  while [ -e /proc/$1 ]
+  do
+    sleep .6
+  done
+}
+
+while getopts "p:m:n:w:r:s:x:fah" opt; do
+  case $opt in
+    a)
+      _autorun="-a"
+      ;;
+    f)
+      _frame="-f"
+      ;;
+    h)
+      usage
+      ;;
+    m)
+      _mpirun="$OPTARG"
+      ;;
+    n)
+      _nb_proc=$OPTARG
+      ;;
+    p)
+      _mpirun_np=$OPTARG
+      ;;
+    r)
+      _rank_of_interest="$OPTARG"
+      ;;
+    s)
+      _server=$OPTARG
+      ;;
+    w)
+      _wd="-w $OPTARG"
+      ;;
+    x)
+      _gdbinit="-x $OPTARG"
+      ;;
+    \?)
+      usage
+      ;;
+  esac
+done
+
+shift $(( $OPTIND - 1 ))
+
+_exe=$1
+shift
+
+_fullname=$(readlink -f ${_exe})
+_name=$(basename ${_exe})
+
+# Spawning an emacs server if none is running
+if [ "x$(__emacs_server_list  | grep "${_server}")" == "x" ]; then
+  log "Starting emacs server \'${_server}\'"
+  emacs --daemon="${_server}" --name="${_server}@$(hostname --fqdn)" > /dev/null
+fi
+
+# Getting the pid of the parent emacs
+_ppid=$(ps -fu $USER | grep -v grep |grep "emacs --daemon=${_server} " | awk '{ print $2; }')
+
+#_tmp=$(tempfile --prefix "${name}" --suffix "[${_rank}]")
+if [ "x$TMPDIR" == "x" ]; then
+  _tmpdir=$(mktemp -d emacs-gdb-mpi_XXXXXXXX)
+else
+  _tmpdir=$TMPDIR/emacs-gdb-mpi
+fi
+
+if [ ! -d ${_tmpdir} ]; then
+  log "Creating tmp folder ${_tmpdir}"
+  mkdir -p $_tmpdir
+fi
+
+${_mpirun} ${_mpirun_np} ${_nb_proc} \
+	   ${_emacs_gdb_spawn_client} \
+	   -n ${_rank_of_interest} \
+	   -s ${_server} \
+	   -t ${_tmpdir} \
+	   -p ${_ppid} \
+	   ${_autorun} ${_frame} ${_wd} ${_gdbinit} \
+	   ${_fullname} $*
+
+function clean() {
+  _buffer_regex="${_name}_--[0-9]+--"
+  _pid=$(ps -fu $USER | grep -v grep | grep -v emacsclient | grep -P "gdb --fullname -ix ${_tmpdir}/${_buffer_regex} " |  grep " ${_ppid} " | awk '{ print $2; }')
+
+  log "Killing remaining GDBs"
+  for _p in ${_pid}; do
+    kill -KILL ${_p}
+  done
+
+  log "Closing emacs buffers"
+  emacsclient -s ${_server} -e "(kill-matching-buffers \"gud-${_buffer_regex}\")"
+
+  log "Cleaning temporary folder ${_tmpdir}"
+  rm -rf ${_tmpdir}/*
+}
+
+trap clean SIGINT SIGABRT SIGKILL EXIT
