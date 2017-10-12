@@ -1,6 +1,6 @@
 #!/bin/bash
 
-_source_path="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+_source_path="$( cd "$( dirname "$(readlink "${BASH_SOURCE[0]}")" )" && pwd )"
 _emacs_gdb_spawn_client="${_source_path}/emacs_gdb_spawn_client"
 
 log() { printf '%s\n' "$*"; }
@@ -123,6 +123,7 @@ if [ ! -d ${_tmpdir} ]; then
   mkdir -p $_tmpdir
 fi
 
+log "(${_ppid}) spawning mpi jobs"
 ${_mpirun} ${_mpirun_np} ${_nb_proc} \
 	   ${_emacs_gdb_spawn_client} \
 	   -n ${_rank_of_interest} \
@@ -138,11 +139,12 @@ function clean() {
 
   log "Killing remaining GDBs"
   for _p in ${_pid}; do
-    kill -KILL ${_p}
+    echo kill -9 ${_p}
+    kill -9 ${_p}
   done
 
-  log "Closing emacs buffers"
-  emacsclient -s ${_server} -e "(kill-matching-buffers \"gud-${_buffer_regex}\")"
+  # log "Closing emacs buffers"
+  # emacsclient -s ${_server} -e "(kill-matching-buffers \"gud-${_buffer_regex}\")"
 
   log "Cleaning temporary folder ${_tmpdir}"
   rm -rf ${_tmpdir}/*

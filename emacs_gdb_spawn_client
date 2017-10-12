@@ -86,10 +86,10 @@ fi
 
 # Finding the GDB pid
 if [ ! \( ${_rank} -eq ${_rank_of_interest} -a "x${frame}" != "x" \) ]; then
-  _pid=$(ps -fu $USER | grep -v grep | grep -v emacsclient | grep "gdb --fullname -ix ${_tmp} " |  grep " ${_ppid} " | awk '{ print $2; }')
+  _pid=$(ps --ppid ${_ppid} -f --cols 2000 | grep "gdb --fullname -ix ${_tmp} " | awk '{ print $2; }')
 
   # some cleaning up
-  trap "{ echo ${_rank}: TRAP; kill -9 ${_pid}; exit 1 }" ABRT TERM KILL INT QUIT ERR
+  trap "echo ${_rank}: TRAP; kill -9 ${_pid}; exit 1" ABRT TERM KILL INT QUIT ERR
 
   # wait for gdb to finish
   echo "$_rank: Waiting for gdb (${_pid})"
