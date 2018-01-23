@@ -2,12 +2,12 @@
 
 function __get_rank() {
   local _rank=-1
-  if [ "x$OMPI_COMM_WORLD_RANK" != "x" ];then
-    _rank=${OMPI_COMM_WORLD_RANK} #OpenMPI
-    # echo "${RANK}: OpenMPI detected"
-  elif [ "x$PMI_RANK" != "x" ]; then
-    _rank=${PMI_RANK}            #MPICH 2
-    # echo "${RANK}: MPICH based MPI detected"
+  if [ "x$OMPI_COMM_WORLD_RANK" != "x" ];then # OpenMPI
+    _rank=${OMPI_COMM_WORLD_RANK}
+  elif [ "x$PMI_RANK" != "x" ]; then # MPICH 2
+    _rank=${PMI_RANK}
+  elif  [ "x$SLURM_PROCID" != "x" ]; then # slurm
+    _rank=${SLURM_PROCID}
   else
     # echo "MPI implementation not detected"
     exit 1
@@ -78,7 +78,7 @@ printenv -0 | grep -vz TERM | grep -vz BASH_FUNC | xargs -0 -I '{}' -- echo "set
 # Spawning the clients
 if [ ${_rank} -eq ${_rank_of_interest} ] ; then
   # master
-  emacsclient $frame -s ${_server} -e "(gud-gdb \"gdb --fullname -ix ${_tmp} -cd ${_wd} -args ${_fullname} $*\")"
+  emacsclient ${frame} -s ${_server} -e "(gud-gdb \"gdb --fullname -ix ${_tmp} -cd ${_wd} -args ${_fullname} $*\")"
 else
   # slaves
   emacsclient -s ${_server} -e "(gud-gdb \"gdb --fullname -ix ${_tmp} ${_gdbinit} ${_autorun} -cd ${_wd} -args ${_fullname} $*\")"
