@@ -128,7 +128,7 @@ if [ ! -d ${_tmpdir} ]; then
 fi
 
 log "(${_ppid}) spawning mpi jobs"
-echo ${_mpirun} ${_mpirun_np} ${_nb_proc} \
+${_mpirun} ${_mpirun_np} ${_nb_proc} \
 	   ${_emacs_gdb_spawn_client} \
 	   -n ${_rank_of_interest} \
 	   -s ${_server} \
@@ -138,9 +138,8 @@ echo ${_mpirun} ${_mpirun_np} ${_nb_proc} \
 	   ${_fullname} $*
 
 function clean() {
-  _buffer_regex="${_name}_--[0-9]+--"
-  _pid=$(ps -fu $USER | grep -v grep | grep -v emacsclient | grep -P "gdb --fullname -ix ${_tmpdir}/${_buffer_regex} " |  grep " ${_ppid} " | awk '{ print $2; }')
-
+  #_buffer_regex="${_name}_--[0-9]+--"
+  _pid=$(ps --ppid ${_ppid} -f --cols 2000 | grep -e "gdb --fullname -ix.*${_tmpdir}/${_name}_--[0-9]\+-- " | awk '{ print $2; }')
   log "Killing remaining GDBs"
   for _p in ${_pid}; do
     echo kill -9 ${_p}
