@@ -74,15 +74,19 @@ _rank=$(__get_rank)
 # Setting the environment file for gdb to know about MPI
 _tmp="${_tmpdir}/${_name}_--$_rank--"
 printenv -0 | grep -vz TERM | grep -vz BASH_FUNC | xargs -0 -I '{}' -- echo "set environment {}" > "${_tmp}"
+_log="${_tmpdir}/log_${_rank}"
 
 # Spawning the clients
 if [ ${_rank} -eq ${_rank_of_interest} ] ; then
   # master
-  emacsclient ${frame} -s ${_server} -e "(gud-gdb \"gdb --fullname -ix ${_tmp} -cd ${_wd} -args ${_fullname} $*\")"
+  emacsclient ${frame} -s ${_server} -e "(gud-gdb \"gdb --fullname -ix ${_tmp} -ex start -cd ${_wd} -args ${_fullname} $*\")" 2>&1 > ${_log}
 else
   # slaves
-  emacsclient -s ${_server} -e "(gud-gdb \"gdb --fullname -ix ${_tmp} ${_gdbinit} ${_autorun} -cd ${_wd} -args ${_fullname} $*\")"
+  emacsclient -s ${_server} -e "(gud-gdb \"gdb --fullname -ix ${_tmp} ${_gdbinit} ${_autorun} -cd ${_wd} -args ${_fullname} $*\")" 2>&1 > ${_log}
 fi
+
+sleep 1
+
 
 # Finding the GDB pid
 if [ ! \( ${_rank} -eq ${_rank_of_interest} -a "x${frame}" != "x" \) ]; then
