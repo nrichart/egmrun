@@ -22,6 +22,10 @@ function __wait() {
   done
 }
 
+_rank=$(__get_rank)
+
+echo "${_rank}: arguments $*"
+
 _rank_of_interest=0
 _server=emacs
 _ppid=
@@ -29,6 +33,7 @@ _autorun=
 _frame=
 _wd=
 _tmpdir=
+_gdbinit=
 while getopts "p:t:w:n:s:x:fa" opt; do
   case $opt in
     a)
@@ -53,7 +58,7 @@ while getopts "p:t:w:n:s:x:fa" opt; do
       _wd=$OPTARG
       ;;
     x)
-      _gdbinit="-x $OPTARG"
+      _gdbinit="$OPTARG"
       ;;
   esac
 done
@@ -67,19 +72,28 @@ _fullname=$(readlink -f ${_exe})
 if [ "x${_wd}" == "x" ]; then
   _wd=$(dirname ${_fullname})
 fi
-
 _name=$(basename ${_fullname})
-_rank=$(__get_rank)
 
 # Setting the environment file for gdb to know about MPI
 _tmp="${_tmpdir}/${_name}_--$_rank--"
 printenv -0 | grep -vz TERM | grep -vz BASH_FUNC | xargs -0 -I '{}' -- echo "set environment {}" > "${_tmp}"
 _log="${_tmpdir}/log_${_rank}"
 
+_gdbinit_new=${_gdbinit/<rank>/${_rank}}
+echo "${_rank}: ${_gdbinit_new} (${_gdbinit})"
+if [ ! -e ${_gdbinit_new} ]; then
+   _gdbinit="-x ${_gdbinit/<rank>/}"
+elif [ "x${_gdbinit_new}" != "x" ]; then
+  _gdbinit="-x ${_gdbinit_new}"
+fi
+
 # Spawning the clients
 if [ ${_rank} -eq ${_rank_of_interest} ] ; then
   # master
-  emacsclient ${frame} -s ${_server} -e "(gud-gdb \"gdb --fullname -ix ${_tmp} -ex start -cd ${_wd} -args ${_fullname} $*\")" 2>&1 > ${_log}
+  if [ "x${_gdbinit}" = "x" ]; then
+    _gdbinit="-ex start"
+  fi
+  emacsclient ${frame} -s ${_server} -e "(gud-gdb \"gdb --fullname -ix ${_tmp} ${_gdbinit} -cd ${_wd} -args ${_fullname} $*\")" 2>&1 > ${_log}
 else
   # slaves
   emacsclient -s ${_server} -e "(gud-gdb \"gdb --fullname -ix ${_tmp} ${_gdbinit} ${_autorun} -cd ${_wd} -args ${_fullname} $*\")" 2>&1 > ${_log}

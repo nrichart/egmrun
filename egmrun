@@ -37,7 +37,7 @@ options:
 }
 
 function __emacs_server_list() {
-  local _named=$(ps -fu $USER | grep "emacs --daemon=" | grep -v grep | sed -e 's/.*--daemon=\([0-9a-zA-Z_\-+]*\).*/\1/')
+  local _named=$(ps -fu $USER | grep "emacs --daemon=" | grep -v grep | sed -e 's/.*--daemon=\(.*\) .*/\1/')
   local _anon=$(ps -fu $USER | grep "emacs --daemon" | grep -v grep | grep -v "daemon=")
   local _emacs_list
   if [ "x$_anon" = "x" ]; then
@@ -107,8 +107,11 @@ _fullname=$(readlink -qf ${_exe})
 _name=$(basename ${_exe})
 
 # Spawning an emacs server if none is running
-if [ "x$(__emacs_server_list  | grep "${_server}")" == "x" ]; then
-  log "Starting emacs server \'${_server}\'"
+echo "server list: $(__emacs_server_list)"
+echo "server list grep '${_server}': $(__emacs_server_list  | grep ${_server})"
+
+if [ "x$(__emacs_server_list  | grep ${_server})" == "x" ]; then
+  log "Starting emacs server '${_server}'"
   emacs --daemon="${_server}" --name="${_server}@$(hostname --fqdn)" > /dev/null
 fi
 
@@ -128,7 +131,7 @@ if [ ! -d ${_tmpdir} ]; then
 fi
 
 log "(${_ppid}) spawning mpi jobs"
-${_mpirun} ${_mpirun_np} ${_nb_proc} \
+${_mpirun} -oversubscribe ${_mpirun_np} ${_nb_proc} \
 	   ${_emacs_gdb_spawn_client} \
 	   -n ${_rank_of_interest} \
 	   -s ${_server} \
