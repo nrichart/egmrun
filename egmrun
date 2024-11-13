@@ -8,7 +8,7 @@ error() { log "ERROR: $*" >&2; }
 fatal() { error "$@"; exit 1; }
 
 _rank_of_interest=0
-_server=emacs
+_server=server
 _frame=
 _wd=
 _autorun=
@@ -37,14 +37,7 @@ options:
 }
 
 function __emacs_server_list() {
-  local _named=$(ps -fu $USER | grep "emacs --daemon=" | grep -v grep | sed -e 's/.*--daemon=\(.*\) .*/\1/')
-  local _anon=$(ps -fu $USER | grep "emacs --daemon" | grep -v grep | grep -v "daemon=")
-  local _emacs_list
-  if [ "x$_anon" = "x" ]; then
-    _emacs_list="$_named"
-  else
-    _emacs_list="emacs\n$_named"
-  fi
+  local _emacs_list=$(ls -1 $XDG_RUNTIME_DIR/emacs/)
 
   echo "$_emacs_list"
 }
@@ -116,7 +109,7 @@ if [ "x$(__emacs_server_list  | grep ${_server})" == "x" ]; then
 fi
 
 # Getting the pid of the parent emacs
-_ppid=$(ps -fu $USER | grep -v grep |grep "emacs --daemon=${_server} " | awk '{ print $2; }')
+_ppid=$(emacsclient -s ${_server} -e "(emacs-pid)")
 
 #_tmp=$(tempfile --prefix "${name}" --suffix "[${_rank}]")
 if [ "x$TMPDIR" == "x" ]; then

@@ -105,6 +105,7 @@ sleep 1
 # Finding the GDB pid
 if [ ! \( ${_rank} -eq ${_rank_of_interest} -a "x${frame}" != "x" \) ]; then
   sleep 1
+  echo "${_rank} ps --ppid ${_ppid} -f --cols 2000 | grep -e \"gdb --fullname -ix .*${_tmp} \" | awk \'{ print $2; }\'"
   _pid=$(ps --ppid ${_ppid} -f --cols 2000 | grep -e "gdb --fullname -ix .*${_tmp} " | awk '{ print $2; }')
 
   # some cleaning up
